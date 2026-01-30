@@ -23,6 +23,9 @@
 
 #include <string>
 #include <utility>
+#include <deque>
+#include <mutex>
+#include <sstream>
 
 #if defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
 #include <vix/middleware/app/adapter.hpp>
@@ -34,6 +37,36 @@ namespace J = vix::json;
 
 namespace vix::p2p_http
 {
+  class LogBuffer
+  {
+  public:
+    explicit LogBuffer(std::size_t cap = 500) : cap_(cap) {}
+
+    void push(std::string line)
+    {
+      std::lock_guard<std::mutex> lock(mu_);
+      if (lines_.size() >= cap_)
+        lines_.pop_front();
+      lines_.push_back(std::move(line));
+    }
+
+    std::string dump() const
+    {
+      std::lock_guard<std::mutex> lock(mu_);
+      std::ostringstream oss;
+      for (const auto &l : lines_)
+        oss << l << "\n";
+      return oss.str();
+    }
+
+  private:
+    std::size_t cap_;
+    mutable std::mutex mu_;
+    std::deque<std::string> lines_;
+  };
+
+  static LogBuffer g_logs{800};
+
   static std::string join_prefix(std::string base, std::string path)
   {
     if (!base.empty() && base.front() != '/')
@@ -143,6 +176,7 @@ namespace vix::p2p_http
                       const P2PHttpOptions &opt)
   {
     (void)runtime;
+    g_logs.push("[p2p_http] routes registered");
 
     const std::string base = (opt.prefix.empty() ? "/p2p" : opt.prefix);
 
@@ -185,6 +219,26 @@ namespace vix::p2p_http
                     "module",
                     "p2p_http",
                 })); });
+
+#if defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
+      {
+        vix::p2p_http::RouteOptions ro;
+        ro.heavy = false;
+        ro.require_auth = false;
+        install_route_middlewares(app, path, ro, opt);
+      }
+#endif
+    }
+
+    // GET /p2p/logs
+    if (opt.enable_logs)
+    {
+      const std::string path = join_prefix(base, "/logs");
+
+      app.get(path, [](vix::vhttp::Request &, vix::vhttp::ResponseWrapper &res)
+              {
+               res.type("text/plain; charset=utf-8");
+                res.text(g_logs.dump()); });
 
 #if defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
       {

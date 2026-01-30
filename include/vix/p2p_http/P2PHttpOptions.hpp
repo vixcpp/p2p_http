@@ -32,10 +32,12 @@ namespace vix::p2p_http
 
     bool enable_ping = true;
     bool enable_status = true;
+    bool enable_logs = true;
 
     AuthHookCtx auth_ctx = nullptr;
     AuthHookLegacy auth_legacy = nullptr;
   };
+
 }
 
 #endif
