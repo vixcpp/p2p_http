@@ -267,6 +267,106 @@ namespace vix::p2p_http
 #endif
     }
 
+    // POST /p2p/connect  (connect to a peer endpoint)
+    if (opt.enable_peers)
+    {
+      const std::string path = join_prefix(base, "/connect");
+
+      app.post(path, [&runtime](vix::vhttp::Request &req, vix::vhttp::ResponseWrapper &res)
+               {
+    auto node = runtime.node();
+    if (!node)
+    {
+      res.status(503).json(vix::json::o(
+        "ok", false,
+        "error", "p2p_node_unavailable"
+      ));
+      return;
+    }
+
+    // Expect JSON: { "host": "127.0.0.1", "port": 9002, "scheme": "tcp" }
+    vix::json::Json body;
+    try
+    {
+      body = req.json();
+    }
+    catch (...)
+    {
+      res.status(400).json(vix::json::o(
+        "ok", false,
+        "error", "invalid_json"
+      ));
+      return;
+    }
+
+    auto get_str = [&](const char *key, const std::string &fallback = "") -> std::string
+    {
+      if (const auto *v = vix::json::jget(body, key))
+      {
+        if (v->is_string())
+          return v->get<std::string>();
+
+        if (v->is_number_integer())
+          return std::to_string(v->get<long long>());
+      }
+      return fallback;
+    };
+
+    auto get_ll = [&](const char *key, long long fallback = 0) -> long long
+    {
+      if (const auto *v = vix::json::jget(body, key))
+      {
+        if (v->is_number_integer())
+          return v->get<long long>();
+
+        if (v->is_string())
+        {
+          try { return std::stoll(v->get<std::string>()); }
+          catch (...) {}
+        }
+      }
+      return fallback;
+    };
+
+    const std::string host = get_str("host", "");
+    const long long port_ll = get_ll("port", 0);
+    std::string scheme = get_str("scheme", "tcp");
+    if (scheme.empty())
+      scheme = "tcp";
+
+    if (host.empty() || port_ll <= 0 || port_ll > 65535)
+    {
+      res.status(400).json(vix::json::o(
+        "ok", false,
+        "error", "invalid_endpoint",
+        "hint", "expected {host, port, scheme?}"
+      ));
+      return;
+    }
+
+    vix::p2p::PeerEndpoint ep;
+    ep.host = host;
+    ep.port = static_cast<std::uint16_t>(port_ll);
+    ep.scheme = scheme;
+
+    const bool started = node->connect(ep);
+
+    res.json(vix::json::o(
+      "ok", true,
+      "started", started,
+      "endpoint", (scheme + "://" + host + ":" + std::to_string((int)ep.port))
+    )); });
+
+#if defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
+      {
+        vix::p2p_http::RouteOptions ro;
+        ro.heavy = true;
+        ro.require_auth = false; // ou true si tu veux protéger
+        install_route_middlewares(app, path, ro, opt);
+      }
+#endif
+    }
+
     // GET /p2p/status
     if (opt.enable_status)
     {
@@ -375,6 +475,31 @@ namespace vix::p2p_http
             std::vector<J::token> peers_arr;
             peers_arr.reserve(items.size());
 
+            auto hex2 = [](std::uint8_t b) -> char {
+              b &= 0x0F;
+              return (b < 10) ? char('0' + b) : char('a' + (b - 10));
+            };
+
+            auto short_fp_bytes = [hex2](const std::vector<std::uint8_t> &v) -> std::string {
+              if (v.empty()) return "";
+
+              const std::size_t n = v.size();
+              const std::size_t take = std::min<std::size_t>(4, n);
+
+              std::string out;
+              out.reserve(take * 2 + 10);
+
+              for (std::size_t i = 0; i < take; ++i)
+              {
+                const std::uint8_t b = v[i];
+                out.push_back(hex2(std::uint8_t(b >> 4)));
+                out.push_back(hex2(b));
+              }
+
+              out += "..(" + std::to_string(n) + ")";
+              return out;
+            };
+
             for (const auto &[peer_id, p] : items)
             {
               const std::string ep_str = endpoint_to_string(p.endpoint);
@@ -388,8 +513,8 @@ namespace vix::p2p_http
               }
 
               const bool secure = p.meta.secure;
-              const long long public_key_len = (long long)p.meta.public_key.size();
-              const long long session_key_len = (long long)p.meta.session_key_32.size();
+              const std::string pub_fp  = short_fp_bytes(p.meta.public_key);
+              const std::string sess_fp = short_fp_bytes(p.meta.session_key_32);
               const long long capabilities_count = (long long)p.meta.capabilities.size();
 
               // Handshake block (optional)
@@ -435,8 +560,9 @@ namespace vix::p2p_http
 
                 "secure", secure,
                 "capabilities_count", capabilities_count,
-                "public_key_len", public_key_len,
-                "session_key_len", session_key_len,
+                "public_key_len", pub_fp,
+                "public_key_fp", pub_fp,
+                "session_key_len", sess_fp,
 
                 "last_seen_ms_ago", (long long)last_seen_ms_ago,
 
@@ -444,11 +570,11 @@ namespace vix::p2p_http
                 "handshake_stage", hs_stage,
                 "handshake_age_ms", (long long)hs_age_ms,
 
-                // debug-friendly (safe, no secrets)
                 "nonce_a", (long long)hs_nonce_a,
                 "nonce_b", (long long)hs_nonce_b,
                 "ts_ms", (long long)hs_ts_ms
               }));
+
             }
 
             res.json(J::obj({
