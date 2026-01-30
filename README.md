@@ -121,9 +121,10 @@ int main()
   P2PHttpOptions opt;
   opt.enable_peers = true;
 
-  install_p2p_http(app, opt);
+  app.listen(5178, [](const vix::utils::ServerReadyInfo &info){
+    console.info("UI API listening on", info.port);
+  });
 
-  app.listen(5178);
   app.wait();
 }
 ```
