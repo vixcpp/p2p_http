@@ -302,6 +302,172 @@ namespace vix::p2p_http
 #endif
     }
 
+    // GET /p2p/peers  (multi-peer view for dashboard)
+    if (opt.enable_peers)
+    {
+      const std::string path = join_prefix(base, "/peers");
+
+      app.get(path, [&runtime](vix::vhttp::Request &, vix::vhttp::ResponseWrapper &res)
+              {
+            auto node = runtime.node();
+            if (!node)
+            {
+              res.status(503).json(J::obj({
+                "ok", false,
+                "error", "p2p_node_unavailable"
+              }));
+              return;
+            }
+
+            const auto snap = node->peers_snapshot();
+
+            // Make output stable: sort by peer_id
+            std::vector<std::pair<vix::p2p::PeerId, vix::p2p::Peer>> items;
+            items.reserve(snap.size());
+            for (const auto &kv : snap)
+              items.push_back(kv);
+
+            std::sort(items.begin(), items.end(),
+                      [](const auto &a, const auto &b)
+                      {
+                        return a.first < b.first;
+                      });
+
+            auto state_to_string = [](vix::p2p::PeerState s) -> const char *
+            {
+              switch (s)
+              {
+              case vix::p2p::PeerState::Disconnected: return "disconnected";
+              case vix::p2p::PeerState::Connecting:   return "connecting";
+              case vix::p2p::PeerState::Handshaking:  return "handshaking";
+              case vix::p2p::PeerState::Connected:    return "connected";
+              case vix::p2p::PeerState::Stale:        return "stale";
+              case vix::p2p::PeerState::Closed:       return "closed";
+              default:                                return "unknown";
+              }
+            };
+
+            auto hs_stage_to_string = [](vix::p2p::HandshakeState::Stage s) -> const char *
+            {
+              switch (s)
+              {
+              case vix::p2p::HandshakeState::Stage::None:          return "none";
+              case vix::p2p::HandshakeState::Stage::HelloSent:     return "hello_sent";
+              case vix::p2p::HandshakeState::Stage::HelloReceived: return "hello_received";
+              case vix::p2p::HandshakeState::Stage::AckSent:       return "ack_sent";
+              case vix::p2p::HandshakeState::Stage::AckReceived:   return "ack_received";
+              case vix::p2p::HandshakeState::Stage::Finished:      return "finished";
+              default:                                             return "unknown";
+              }
+            };
+
+            auto endpoint_to_string = [](const std::optional<vix::p2p::PeerEndpoint> &ep) -> std::string
+            {
+              if (!ep)
+                return "";
+
+              const std::string scheme = (ep->scheme.empty() ? "tcp" : ep->scheme);
+              return scheme + "://" + ep->host + ":" + std::to_string(ep->port);
+            };
+
+            const auto now = std::chrono::steady_clock::now();
+
+            std::vector<J::token> peers_arr;
+            peers_arr.reserve(items.size());
+
+            for (const auto &[peer_id, p] : items)
+            {
+              const std::string ep_str = endpoint_to_string(p.endpoint);
+
+              long long last_seen_ms_ago = -1;
+              if (p.meta.last_seen.time_since_epoch().count() != 0)
+              {
+                const auto diff = now - p.meta.last_seen;
+                last_seen_ms_ago =
+                    (long long)std::chrono::duration_cast<std::chrono::milliseconds>(diff).count();
+              }
+
+              const bool secure = p.meta.secure;
+              const long long public_key_len = (long long)p.meta.public_key.size();
+              const long long session_key_len = (long long)p.meta.session_key_32.size();
+              const long long capabilities_count = (long long)p.meta.capabilities.size();
+
+              // Handshake block (optional)
+              const bool has_hs = p.handshake.has_value();
+              const char *hs_stage = "none";
+              long long hs_age_ms = -1;
+              long long hs_nonce_a = 0;
+              long long hs_nonce_b = 0;
+              long long hs_ts_ms   = 0;
+
+              if (has_hs)
+              {
+                hs_stage = hs_stage_to_string(p.handshake->stage);
+
+                if (p.handshake->started_at.time_since_epoch().count() != 0)
+                {
+                  const auto diff = now - p.handshake->started_at;
+                  hs_age_ms =
+                      (long long)std::chrono::duration_cast<std::chrono::milliseconds>(diff).count();
+                }
+
+                hs_nonce_a = (long long)p.handshake->nonce_a;
+                hs_nonce_b = (long long)p.handshake->nonce_b;
+                hs_ts_ms   = (long long)p.handshake->ts_ms;
+              }
+
+              // Endpoint split (optional)
+              const bool has_ep = p.endpoint.has_value();
+              const std::string ep_scheme = (has_ep ? (p.endpoint->scheme.empty() ? "tcp" : p.endpoint->scheme) : "");
+              const std::string ep_host   = (has_ep ? p.endpoint->host : "");
+              const long long ep_port      = (has_ep ? (long long)p.endpoint->port : 0);
+
+              // Final peer object
+              peers_arr.push_back(J::obj({
+                "peer_id", peer_id,
+                "state", state_to_string(p.state),
+
+                "endpoint", ep_str,
+                "has_endpoint", has_ep,
+                "scheme", ep_scheme,
+                "host", ep_host,
+                "port", ep_port,
+
+                "secure", secure,
+                "capabilities_count", capabilities_count,
+                "public_key_len", public_key_len,
+                "session_key_len", session_key_len,
+
+                "last_seen_ms_ago", (long long)last_seen_ms_ago,
+
+                "has_handshake", has_hs,
+                "handshake_stage", hs_stage,
+                "handshake_age_ms", (long long)hs_age_ms,
+
+                // debug-friendly (safe, no secrets)
+                "nonce_a", (long long)hs_nonce_a,
+                "nonce_b", (long long)hs_nonce_b,
+                "ts_ms", (long long)hs_ts_ms
+              }));
+            }
+
+            res.json(J::obj({
+              "ok", true,
+              "module", "p2p_http",
+              "total", (long long)peers_arr.size(),
+              "peers", J::array(std::move(peers_arr))
+            })); });
+
+#if defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
+      {
+        vix::p2p_http::RouteOptions ro;
+        ro.heavy = false;
+        ro.require_auth = false;
+        install_route_middlewares(app, path, ro, opt);
+      }
+#endif
+    }
+
     // GET /p2p/logs
     if (opt.enable_logs)
     {
