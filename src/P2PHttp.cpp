@@ -21,11 +21,17 @@
 #include <vix/http/Response.hpp>
 #include <vix/json/json.hpp>
 
+#include <vix/p2p/Node.hpp>
+#include <vix/p2p/P2P.hpp>
+
 #include <string>
 #include <utility>
 #include <deque>
 #include <mutex>
 #include <sstream>
+#include <atomic>
+#include <chrono>
+#include <thread>
 
 #if defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
 #include <vix/middleware/app/adapter.hpp>
@@ -66,6 +72,20 @@ namespace vix::p2p_http
   };
 
   static LogBuffer g_logs{800};
+
+  static std::atomic<bool> g_tick_started{false};
+  static std::atomic<bool> g_tick_stop{false};
+
+  static std::string stats_line_plain(const vix::p2p::NodeStats &st)
+  {
+    std::ostringstream oss;
+    oss
+        << "peers_total=" << st.peers_total
+        << " peers_connected=" << st.peers_connected
+        << " handshakes_started=" << st.handshakes_started
+        << " handshakes_completed=" << st.handshakes_completed;
+    return oss.str();
+  }
 
   static std::string join_prefix(std::string base, std::string path)
   {
@@ -175,25 +195,63 @@ namespace vix::p2p_http
                       vix::p2p::P2PRuntime &runtime,
                       const P2PHttpOptions &opt)
   {
-    (void)runtime;
+    const std::string base = (opt.prefix.empty() ? "/p2p" : opt.prefix);
+
     g_logs.push("[p2p_http] routes registered");
 
-    const std::string base = (opt.prefix.empty() ? "/p2p" : opt.prefix);
+    if (opt.enable_live_logs && opt.enable_logs)
+    {
+      bool expected = false;
+      if (g_tick_started.compare_exchange_strong(expected, true))
+      {
+        g_tick_stop.store(false);
+
+        const int every = (opt.stats_every_ms <= 0 ? 1000 : opt.stats_every_ms);
+
+        auto *rt = &runtime;
+
+        std::thread([rt, every]()
+                    {
+      vix::p2p::NodeStats last{};
+      while (!g_tick_stop.load())
+      {
+        const auto st = rt->stats();
+
+        const bool changed =
+            (st.peers_total != last.peers_total) ||
+            (st.peers_connected != last.peers_connected) ||
+            (st.handshakes_started != last.handshakes_started) ||
+            (st.handshakes_completed != last.handshakes_completed);
+
+        if (changed)
+        {
+          g_logs.push(std::string("[p2p] ") + stats_line_plain(st));
+          last = st;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(every));
+      } })
+            .detach();
+      }
+    }
 
     // GET /p2p/ping
     if (opt.enable_ping)
     {
       const std::string path = join_prefix(base, "/ping");
 
-      app.get(path, [](vix::vhttp::Request &, vix::vhttp::ResponseWrapper &res)
-              { res.json(J::obj({
-                    "ok",
-                    true,
-                    "pong",
-                    true,
-                    "module",
-                    "p2p_http",
-                })); });
+      app.get(path, [&runtime](vix::vhttp::Request &, vix::vhttp::ResponseWrapper &res)
+              {
+        const auto st = runtime.stats();
+
+        res.json(J::obj({
+          "ok", true,
+          "module", "p2p_http",
+          "peers_total", (long long)st.peers_total,
+          "peers_connected", (long long)st.peers_connected,
+          "handshakes_started", (long long)st.handshakes_started,
+          "handshakes_completed", (long long)st.handshakes_completed
+        })); });
 
 #if defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
       {
@@ -210,15 +268,18 @@ namespace vix::p2p_http
     {
       const std::string path = join_prefix(base, "/status");
 
-      app.get(path, [](vix::vhttp::Request &, vix::vhttp::ResponseWrapper &res)
-              { res.json(J::obj({
-                    "ok",
-                    true,
-                    "status",
-                    "ok",
-                    "module",
-                    "p2p_http",
-                })); });
+      app.get(path, [&runtime](vix::vhttp::Request &, vix::vhttp::ResponseWrapper &res)
+              {
+        const auto st = runtime.stats();
+
+        res.json(J::obj({
+          "ok", true,
+          "module", "p2p_http",
+          "peers_total", (long long)st.peers_total,
+          "peers_connected", (long long)st.peers_connected,
+          "handshakes_started", (long long)st.handshakes_started,
+          "handshakes_completed", (long long)st.handshakes_completed
+        })); });
 
 #if defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
       {

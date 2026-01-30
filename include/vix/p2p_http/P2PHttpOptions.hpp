@@ -34,6 +34,9 @@ namespace vix::p2p_http
     bool enable_status = true;
     bool enable_logs = true;
 
+    bool enable_live_logs = true;
+    int stats_every_ms = 1000;
+
     AuthHookCtx auth_ctx = nullptr;
     AuthHookLegacy auth_legacy = nullptr;
   };
