@@ -75,6 +75,48 @@ namespace vix::p2p_http
 
   static std::atomic<bool> g_tick_started{false};
   static std::atomic<bool> g_tick_stop{false};
+  static std::thread g_tick_thread;
+  static std::mutex g_tick_mu;
+
+  static std::function<void(std::string)> g_external_sink = nullptr;
+
+  static void p2p_http_sink(std::string line)
+  {
+    if (g_external_sink)
+    {
+      g_external_sink(std::move(line));
+      return;
+    }
+    g_logs.push(std::move(line));
+  }
+
+  void set_live_log_sink(std::function<void(std::string)> sink)
+  {
+    g_external_sink = std::move(sink);
+  }
+
+  static void push_log(const P2PHttpOptions *opt, std::string line)
+  {
+    if (opt && opt->log_sink)
+    {
+      opt->log_sink(line);
+      return;
+    }
+    g_logs.push(std::move(line));
+  }
+
+  void shutdown_live_logs()
+  {
+    std::lock_guard<std::mutex> lk(g_tick_mu);
+
+    g_tick_stop.store(true);
+
+    if (g_tick_thread.joinable())
+      g_tick_thread.join();
+
+    vix::p2p::clear_global_log_sink();
+    g_tick_started.store(false);
+  }
 
   static std::string stats_line_plain(const vix::p2p::RuntimeStats &st)
   {
@@ -202,49 +244,49 @@ namespace vix::p2p_http
   {
     const std::string base = (opt.prefix.empty() ? "/p2p" : opt.prefix);
 
-    g_logs.push("[p2p_http] routes registered");
+    push_log(&opt, "[p2p_http] routes registered");
+    vix::p2p::set_global_log_sink([](std::string_view s)
+                                  { p2p_http_sink(std::string(s)); });
 
     if (opt.enable_live_logs && opt.enable_logs)
     {
-      bool expected = false;
-      if (g_tick_started.compare_exchange_strong(expected, true))
+      const int every = (opt.stats_every_ms <= 0 ? 1000 : opt.stats_every_ms);
+      auto *rt = &runtime;
+
+      std::lock_guard<std::mutex> lk(g_tick_mu);
+
+      if (g_tick_started.load())
+        return;
+
+      g_tick_started.store(true);
+      g_tick_stop.store(false);
+
+      g_tick_thread = std::thread([rt, every]()
+                                  {
+      vix::p2p::RuntimeStats last{};
+      while (!g_tick_stop.load())
       {
-        g_tick_stop.store(false);
+        const auto st = rt->runtime_stats();
 
-        const int every = (opt.stats_every_ms <= 0 ? 1000 : opt.stats_every_ms);
+        const bool changed =
+          (st.peers_total != last.peers_total) ||
+          (st.peers_connected != last.peers_connected) ||
+          (st.handshakes_started != last.handshakes_started) ||
+          (st.handshakes_completed != last.handshakes_completed) ||
+          (st.connect.connect_attempts != last.connect.connect_attempts) ||
+          (st.connect.connect_deduped != last.connect.connect_deduped) ||
+          (st.connect.connect_failures != last.connect.connect_failures) ||
+          (st.connect.backoff_skips != last.connect.backoff_skips) ||
+          (st.connect.tracked_endpoints != last.connect.tracked_endpoints);
 
-        auto *rt = &runtime;
+        if (changed)
+        {
+          p2p_http_sink(std::string("[p2p] ") + stats_line_plain(st));
+          last = st;
+        }
 
-        std::thread(
-            [rt, every]()
-            {
-          vix::p2p::RuntimeStats last{};
-          while (!g_tick_stop.load())
-          {
-            const auto st = rt->runtime_stats();
-
-            const bool changed =
-              (st.peers_total != last.peers_total) ||
-              (st.peers_connected != last.peers_connected) ||
-              (st.handshakes_started != last.handshakes_started) ||
-              (st.handshakes_completed != last.handshakes_completed) ||
-
-              (st.connect.connect_attempts != last.connect.connect_attempts) ||
-              (st.connect.connect_deduped != last.connect.connect_deduped) ||
-              (st.connect.connect_failures != last.connect.connect_failures) ||
-              (st.connect.backoff_skips != last.connect.backoff_skips) ||
-              (st.connect.tracked_endpoints != last.connect.tracked_endpoints);
-
-            if (changed)
-            {
-              g_logs.push(std::string("[p2p] ") + stats_line_plain(st));
-              last = st;
-            }
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(every));
-          } })
-            .detach();
-      }
+        std::this_thread::sleep_for(std::chrono::milliseconds(every));
+      } });
     }
 
     // GET /p2p/ping

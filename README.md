@@ -108,54 +108,113 @@ Validation rules:
 
 ---
 
-## Usage Example
+## Minimal P2P example (no HTTP)
+
+This example starts two P2P nodes and connects one to the other over TCP.
+### Node A (listener)
 
 ```cpp
 #include <vix.hpp>
 #include <vix/console.hpp>
 #include <vix/p2p/Node.hpp>
 #include <vix/p2p/P2P.hpp>
-#include <vix/p2p_http/P2PHttp.hpp>
 
 using namespace vix;
 
 int main()
 {
-  App app;
-
   vix::p2p::NodeConfig cfg;
-  cfg.node_id = "A";
+  cfg.node_id = "node-A";
   cfg.listen_port = 9001;
+
+  cfg.on_log = [](std::string_view s) {
+    console.info(std::string(s));
+  };
 
   auto node = vix::p2p::make_tcp_node(cfg);
   vix::p2p::P2PRuntime runtime(node);
+
   runtime.start();
 
-  vix::p2p_http::P2PHttpOptions opt;
-  opt.prefix = "/api/p2p";
-  opt.enable_ping = true;
-  opt.enable_status = true;
-  opt.enable_peers = true;
-  opt.enable_logs = true;
-  opt.enable_live_logs = true;
-  opt.stats_every_ms = 250;
+  console.info("Node A running on port 9001");
+  runtime.wait(); // blocks
 
-  vix::p2p_http::registerRoutes(app, runtime, opt);
-
-  app.static_dir("./public");
-  app.get("/", [](Request &, Response &res)
-          { res.file("./public/index.html"); });
-
-  app.get("/connect", [](Request &, Response &res)
-          { res.file("./public/connect.html"); });
-
-  app.listen(5178, [](const vix::utils::ServerReadyInfo &info)
-             { console.info("UI API listening on", info.port); });
-
-  app.wait();
-  runtime.stop();
+  return 0;
 }
 ```
+### Node B (connects to A)
+
+```cpp
+#include <vix.hpp>
+#include <vix/console.hpp>
+#include <vix/p2p/Node.hpp>
+#include <vix/p2p/P2P.hpp>
+
+using namespace vix;
+
+int main()
+{
+  vix::p2p::NodeConfig cfg;
+  cfg.node_id = "node-B";
+
+  cfg.on_log = [](std::string_view s) {
+    console.info(std::string(s));
+  };
+
+  auto node = vix::p2p::make_tcp_node(cfg);
+  vix::p2p::P2PRuntime runtime(node);
+
+  runtime.start();
+
+  vix::p2p::PeerEndpoint ep;
+  ep.host = "127.0.0.1";
+  ep.port = 9001;
+  ep.scheme = "tcp";
+
+  node->connect(ep);
+
+  console.info("Node B connecting to node A...");
+  runtime.wait(); // blocks
+
+  return 0;
+}
+```
+## What this demonstrates
+
+✅ Pure P2P (no HTTP, no UI)
+✅ Asynchronous TCP transport
+✅ Secure handshake (Hello / Ack / Finish)
+✅ Heartbeats + peer lifecycle
+✅ Logs via cfg.on_log
+
+## How to run
+```bash
+# terminal 1
+vix run node_a.cpp
+
+# terminal 2
+vix run node_b.cpp
+```
+## You should see logs like:
+
+```bash
+[p2p] connect() requested: tcp://127.0.0.1:9001
+[p2p] connect() ready: peer_id=...
+[p2p] handshake completed
+```
+
+## Why this example is important
+
+- Shows the smallest useful P2P setup
+- No framework noise
+- Easy mental model
+
+Perfect starting point for:
+
+- messaging
+- replication
+- offline-first sync
+- custom protocols
 
 ---
 

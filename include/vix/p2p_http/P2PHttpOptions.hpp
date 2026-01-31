@@ -23,8 +23,8 @@
 namespace vix::p2p_http
 {
   using AuthHookCtx = std::function<bool(vix::mw::Context &)>;
-
   using AuthHookLegacy = std::function<bool(vix::vhttp::Request &, vix::vhttp::ResponseWrapper &)>;
+  using LogSink = std::function<void(std::string_view)>;
 
   struct P2PHttpOptions
   {
@@ -40,6 +40,8 @@ namespace vix::p2p_http
 
     AuthHookCtx auth_ctx = nullptr;
     AuthHookLegacy auth_legacy = nullptr;
+
+    LogSink log_sink = nullptr;
   };
 
 }

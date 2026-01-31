@@ -32,6 +32,9 @@ namespace vix::p2p_http
       vix::App &app,
       vix::p2p::P2PRuntime &runtime,
       const P2PHttpOptions &opt);
+
+  void shutdown_live_logs();
+  void set_live_log_sink(std::function<void(std::string)> sink);
 }
 
 #endif // VIX_P2P_HTTP_HPP
