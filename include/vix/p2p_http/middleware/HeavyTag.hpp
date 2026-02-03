@@ -22,6 +22,13 @@ namespace vix::p2p_http::mw
 {
 #if defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
 
+  /**
+   * @brief Middleware that marks a route as heavy.
+   *
+   * Adds an HTTP response header indicating that the route is
+   * resource-intensive. This can be used by clients, proxies,
+   * or observability tools for diagnostics and tuning.
+   */
   inline vix::middleware::MiddlewareFn heavy_tag()
   {
     return [](vix::middleware::Context &ctx, vix::middleware::Next next)
@@ -32,6 +39,6 @@ namespace vix::p2p_http::mw
   }
 
 #endif
-}
+} // namespace vix::p2p_http::mw
 
-#endif
+#endif // VIX_P2P_HTTP_MW_HEAVY_TAG_HPP

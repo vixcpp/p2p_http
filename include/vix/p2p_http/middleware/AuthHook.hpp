@@ -25,6 +25,16 @@ namespace vix::p2p_http::mw
 {
 #if defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
 
+  /**
+   * @brief Build a middleware authentication hook for P2P HTTP routes.
+   *
+   * The middleware delegates authentication to the AuthHookCtx provided
+   * in P2PHttpOptions. If no hook is configured, the request is rejected
+   * with an HTTP 401 response.
+   *
+   * @param opt P2P HTTP options containing the authentication hook.
+   * @return Middleware function enforcing authentication.
+   */
   inline vix::middleware::MiddlewareFn auth_hook(P2PHttpOptions opt)
   {
     return [opt = std::move(opt)](vix::middleware::Context &ctx, vix::middleware::Next next) mutable
@@ -51,6 +61,6 @@ namespace vix::p2p_http::mw
   }
 
 #endif
-}
+} // namespace vix::p2p_http::mw
 
-#endif
+#endif // VIX_P2P_HTTP_MW_AUTH_HOOK_HPP

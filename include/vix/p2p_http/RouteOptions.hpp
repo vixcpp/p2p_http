@@ -16,11 +16,20 @@
 
 namespace vix::p2p_http
 {
+  /**
+   * @brief Per-route configuration flags for P2P HTTP endpoints.
+   *
+   * Used to annotate routes with execution and security hints,
+   * typically consumed by the HTTP routing or middleware layer.
+   */
   struct RouteOptions
   {
+    /** @brief Marks the route as heavy or resource-intensive. */
     bool heavy = false;
+
+    /** @brief Require authentication before executing the route. */
     bool require_auth = false;
   };
 }
 
-#endif
+#endif // VIX_P2P_HTTP_ROUTE_OPTIONS_HPP
