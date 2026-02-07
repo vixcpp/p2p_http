@@ -393,7 +393,7 @@ namespace vix::p2p_http
 
     const bool started = node->connect(ep);
 
-    res.json(vix::json::o(
+    res.send(vix::json::o(
       "ok", true,
       "started", started,
       "endpoint", (scheme + "://" + host + ":" + std::to_string((int)ep.port))
