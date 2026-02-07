@@ -319,10 +319,10 @@ namespace vix::p2p_http
     auto node = runtime.node();
     if (!node)
     {
-      res.status(503).json(vix::json::o(
+     res.status(503).json(J::obj({
         "ok", false,
         "error", "p2p_node_unavailable"
-      ));
+      }));
       return;
     }
 
@@ -334,10 +334,10 @@ namespace vix::p2p_http
     }
     catch (...)
     {
-      res.status(400).json(vix::json::o(
+      res.status(400).json(J::obj({
         "ok", false,
         "error", "invalid_json"
-      ));
+      }));
       return;
     }
 
@@ -378,11 +378,11 @@ namespace vix::p2p_http
 
     if (host.empty() || port_ll <= 0 || port_ll > 65535)
     {
-      res.status(400).json(vix::json::o(
+      res.status(400).json(J::obj({
         "ok", false,
         "error", "invalid_endpoint",
         "hint", "expected {host, port, scheme?}"
-      ));
+      }));
       return;
     }
 
