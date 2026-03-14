@@ -1,0 +1,27 @@
+{
+  "name": "p2p_http",
+  "namespace": "vix",
+  "version": "0.1.0",
+  "type": "header-and-source",
+  "include": "include",
+  "src": "src",
+  "license": "MIT",
+  "description": "HTTP layer for Vix P2P networking: P2PHttp server, middleware, routing, and options handling.",
+  "keywords": [
+    "cpp",
+    "vix",
+    "p2p",
+    "http",
+    "server",
+    "routing",
+    "middleware",
+    "network"
+  ],
+  "repository": "https://github.com/vixcpp/p2p_http",
+  "authors": [
+    {
+      "name": "Gaspard Kirira",
+      "github": "Gaspardkirira"
+    }
+  ]
+}
