@@ -26,7 +26,7 @@ namespace vix::p2p_http
   using AuthHookCtx = std::function<bool(vix::mw::Context &)>;
 
   /** @brief Legacy authentication hook using raw HTTP request/response. */
-  using AuthHookLegacy = std::function<bool(vix::vhttp::Request &, vix::vhttp::ResponseWrapper &)>;
+  using AuthHookLegacy = std::function<bool(vix::http::Request &, vix::http::ResponseWrapper &)>;
 
   /** @brief Log sink callback for P2P HTTP events. */
   using LogSink = std::function<void(std::string_view)>;

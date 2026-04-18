@@ -158,8 +158,8 @@ namespace vix::p2p_http
   // Fallback auth (no middleware): module-local.
   static bool legacy_auth_or_401(
       const P2PHttpOptions &opt,
-      vix::vhttp::Request &req,
-      vix::vhttp::ResponseWrapper &res)
+      vix::http::Request &req,
+      vix::http::ResponseWrapper &res)
   {
     if (!opt.auth_legacy)
     {
@@ -294,7 +294,7 @@ namespace vix::p2p_http
     {
       const std::string path = join_prefix(base, "/ping");
 
-      app.get(path, [](vix::vhttp::Request &, vix::vhttp::ResponseWrapper &res)
+      app.get(path, [](vix::http::Request &, vix::http::ResponseWrapper &res)
               { res.json(J::obj({"ok", true,
                                  "pong", true,
                                  "module", "p2p_http"})); });
@@ -314,7 +314,7 @@ namespace vix::p2p_http
     {
       const std::string path = join_prefix(base, "/connect");
 
-      app.post(path, [&runtime](vix::vhttp::Request &req, vix::vhttp::ResponseWrapper &res)
+      app.post(path, [&runtime](vix::http::Request &req, vix::http::ResponseWrapper &res)
                {
     auto node = runtime.node();
     if (!node)
@@ -414,7 +414,7 @@ namespace vix::p2p_http
     {
       const std::string path = join_prefix(base, "/status");
 
-      app.get(path, [&runtime](vix::vhttp::Request &, vix::vhttp::ResponseWrapper &res)
+      app.get(path, [&runtime](vix::http::Request &, vix::http::ResponseWrapper &res)
               {
         const auto st = runtime.runtime_stats();
 
@@ -449,7 +449,7 @@ namespace vix::p2p_http
     {
       const std::string path = join_prefix(base, "/peers");
 
-      app.get(path, [&runtime](vix::vhttp::Request &, vix::vhttp::ResponseWrapper &res)
+      app.get(path, [&runtime](vix::http::Request &, vix::http::ResponseWrapper &res)
               {
             auto node = runtime.node();
             if (!node)
@@ -641,7 +641,7 @@ namespace vix::p2p_http
     {
       const std::string path = join_prefix(base, "/logs");
 
-      app.get(path, [](vix::vhttp::Request &, vix::vhttp::ResponseWrapper &res)
+      app.get(path, [](vix::http::Request &, vix::http::ResponseWrapper &res)
               {
                res.type("text/plain; charset=utf-8");
                 res.text(g_logs.dump()); });
@@ -667,7 +667,7 @@ namespace vix::p2p_http
       // Copy opt into lambda safely (options object is cheap enough; holds std::function)
       const P2PHttpOptions opt_copy = opt;
 
-      app.post(path, [opt_copy, ro](vix::vhttp::Request &req, vix::vhttp::ResponseWrapper &res) mutable
+      app.post(path, [opt_copy, ro](vix::http::Request &req, vix::http::ResponseWrapper &res) mutable
                {
 #if !defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
         if (ro.require_auth)
