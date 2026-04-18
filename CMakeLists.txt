@@ -195,21 +195,28 @@ vix_p2p_http_apply_includes(vix_p2p_http PUBLIC
 # Standard
 target_compile_features(vix_p2p_http PUBLIC cxx_std_20)
 
-# Warnings if umbrella provides it
-if (TARGET vix_warnings AND _VIX_P2P_HTTP_MODE STREQUAL "STATIC")
-  vix_p2p_http_apply_link(vix_p2p_http PRIVATE vix_warnings)
+if (_VIX_P2P_HTTP_MODE STREQUAL "STATIC" AND NOT MSVC)
+  target_compile_options(vix_p2p_http PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+  )
 endif()
 
+if (_VIX_P2P_HTTP_MODE STREQUAL "STATIC" AND VIX_ENABLE_SANITIZERS AND NOT MSVC)
+  target_compile_options(vix_p2p_http PRIVATE
+    -fno-omit-frame-pointer
+    -fsanitize=address,undefined
+  )
+  target_link_options(vix_p2p_http PRIVATE
+    -fsanitize=address,undefined
+  )
+endif()
 # Required deps
 vix_p2p_http_apply_link(vix_p2p_http PUBLIC vix::core vix::p2p)
 
 # Optional middleware
 vix_p2p_http_try_link_middleware(vix_p2p_http PUBLIC)
-
-# Sanitizers if umbrella provides them
-if (VIX_ENABLE_SANITIZERS AND TARGET vix_sanitizers AND _VIX_P2P_HTTP_MODE STREQUAL "STATIC")
-  vix_p2p_http_apply_link(vix_p2p_http PRIVATE vix_sanitizers)
-endif()
 
 # Properties (only for real library)
 if (_VIX_P2P_HTTP_MODE STREQUAL "STATIC")
