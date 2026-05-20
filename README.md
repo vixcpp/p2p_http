@@ -1,116 +1,109 @@
-# Vix P2P HTTP
+# Vix.cpp P2P HTTP Module
 
-**HTTP control surface for Vix P2P runtimes**
+HTTP control surface for Vix P2P runtimes.
 
-Simple. Observable. Scriptable.
+The P2P HTTP module exposes a small HTTP control layer on top of the P2P runtime. It lets you inspect, operate, and control a running P2P node through regular HTTP endpoints.
 
----
+## Documentation
 
-## Overview
+Full documentation will be available here:
 
-`vix/p2p_http` exposes an HTTP layer on top of the P2P runtime.
+https://docs.vixcpp.com/modules/p2p-http/
 
-It lets you inspect and control a running node through regular HTTP endpoints such as:
+API reference:
 
-- `GET /ping`
-- `GET /status`
-- `POST /connect`
-- `GET /peers`
-- `GET /logs`
-- `POST /admin/hook`
+https://docs.vixcpp.com/modules/p2p-http/api-reference
 
-Routes are registered through `registerRoutes(app, runtime, opt)`, and behavior is controlled with `P2PHttpOptions` such as `prefix`, `enable_*`, `auth_ctx`, `auth_legacy`, `log_sink`, and `stats_every_ms`. fileciteturn2file0
+## What P2P HTTP provides
 
----
+- HTTP control surface for P2P nodes
+- Health check endpoint
+- Runtime status endpoint
+- Peer connection endpoint
+- Peer inspection endpoint
+- Logs endpoint
+- Admin hook endpoint
+- Custom route prefix support
+- Optional auth hooks
+- Optional middleware integration
+- Live runtime log support
+- Dashboard-friendly operational API
 
-## Why this module exists
+## Public header
+
+```cpp
+#include <vix/p2p_http.hpp>
+```
+
+Or include specific headers when needed:
+
+```cpp
+#include <vix/p2p_http/routes.hpp>
+#include <vix/p2p_http/options.hpp>
+```
+
+## Basic idea
+
+```text
+vix::p2p
+  -> P2P runtime
+
+vix::p2p_http
+  -> HTTP control plane
+  -> status
+  -> peers
+  -> connect
+  -> logs
+  -> admin hooks
+```
 
 `vix/p2p` gives you the runtime.
+`vix/p2p_http` gives you the operational control surface.
 
-`vix/p2p_http` gives you the control plane.
-
-That means you can:
-
-- probe a node from curl or a browser
-- connect peers remotely with JSON
-- inspect current peer state
-- expose logs for dashboards
-- add lightweight auth around sensitive routes
-
-This module is designed for operational visibility and small control APIs, not for replacing the P2P engine itself. fileciteturn2file0
-
----
-
-## Main API
-
-### Register routes
+## Register routes
 
 ```cpp
-void registerRoutes(
-    vix::App &app,
-    vix::p2p::P2PRuntime &runtime,
-    const P2PHttpOptions &opt);
-```
+#include <vix.hpp>
+#include <vix/p2p.hpp>
+#include <vix/p2p_http.hpp>
 
-This is the entry point of the module. It binds HTTP routes onto an application and wires them to a live `P2PRuntime`. fileciteturn2file0
-
-### Shutdown live logs
-
-```cpp
-void shutdown_live_logs();
-```
-
-Stops the live log thread and clears the global P2P log sink. fileciteturn2file0
-
-### External live log sink
-
-```cpp
-void set_live_log_sink(std::function<void(std::string)> sink);
-```
-
-Lets you redirect live log lines somewhere else, such as SSE, WebSocket, or a custom dashboard sink. fileciteturn2file0
-
----
-
-## Configuration
-
-`P2PHttpOptions` controls the exposed endpoints and route behavior.
-
-```cpp
-struct P2PHttpOptions
+int main()
 {
-  std::string prefix = "/p2p";
-  bool enable_ping = true;
-  bool enable_status = true;
-  bool enable_logs = true;
-  bool enable_live_logs = true;
-  int stats_every_ms = 1000;
-  bool enable_peers{true};
-  AuthHookCtx auth_ctx = nullptr;
-  AuthHookLegacy auth_legacy = nullptr;
-  LogSink log_sink = nullptr;
-};
+  vix::App app;
+
+  vix::p2p::P2PRuntime runtime;
+
+  vix::p2p_http::P2PHttpOptions options;
+  options.prefix = "/p2p";
+
+  vix::p2p_http::registerRoutes(app, runtime, options);
+
+  app.run(8080);
+
+  return 0;
+}
 ```
-
-Notable fields:
-
-- `prefix` changes the base URL, for example `/p2p` or `/control`
-- `enable_ping` exposes `GET <prefix>/ping`
-- `enable_status` exposes `GET <prefix>/status`
-- `enable_peers` exposes both `GET <prefix>/peers` and `POST <prefix>/connect`
-- `enable_logs` exposes `GET <prefix>/logs`
-- `enable_live_logs` starts the background stats-to-log thread when logs are enabled
-- `auth_ctx` is the preferred middleware-based auth hook
-- `auth_legacy` is the raw request/response fallback
-- `log_sink` lets you consume module log lines yourself fileciteturn2file0
-
----
 
 ## Exposed routes
 
-### `GET /ping`
+With the default prefix:
 
-Returns a simple JSON health response:
+```text
+GET  /p2p/ping
+GET  /p2p/status
+GET  /p2p/peers
+GET  /p2p/logs
+POST /p2p/connect
+POST /p2p/admin/hook
+```
+
+## Ping route
+
+```bash
+curl http://127.0.0.1:8080/p2p/ping
+```
+
+Example response:
 
 ```json
 {
@@ -120,82 +113,77 @@ Returns a simple JSON health response:
 }
 ```
 
-Useful for smoke tests and wiring validation. fileciteturn2file0
+## Status route
 
-### `GET /status`
-
-Returns runtime-level P2P stats including:
-
-- `peers_total`
-- `peers_connected`
-- `handshakes_started`
-- `handshakes_completed`
-- `connect_attempts`
-- `connect_deduped`
-- `connect_failures`
-- `backoff_skips`
-- `tracked_endpoints` fileciteturn2file0
-
-### `POST /connect`
-
-Accepts JSON like:
-
-```json
-{
-  "host": "127.0.0.1",
-  "port": 9002,
-  "scheme": "tcp"
-}
+```bash
+curl http://127.0.0.1:8080/p2p/status
 ```
 
-Then asks the runtime node to connect to that peer endpoint. This route exists only when `enable_peers` is enabled. fileciteturn2file0
+The status endpoint exposes runtime-level P2P stats such as peer count, connected peers, handshake counters, connection attempts, failures, backoff skips, and tracked endpoints.
 
-### `GET /peers`
+## Connect route
 
-Returns a stable, sorted view of known peers, including:
+```bash
+curl -X POST http://127.0.0.1:8080/p2p/connect \
+  -H "content-type: application/json" \
+  -d '{"host":"127.0.0.1","port":9002,"scheme":"tcp"}'
+```
 
-- `peer_id`
-- connection `state`
-- resolved endpoint
-- security flags
-- handshake stage
-- last seen age
-- short public/session key fingerprints
+This asks the runtime to connect to a peer endpoint.
 
-The handler sorts peers by `peer_id` before serializing the response. fileciteturn2file0
+## Peers route
 
-### `GET /logs`
+```bash
+curl http://127.0.0.1:8080/p2p/peers
+```
 
-Returns the in-memory log buffer as plain text. The module keeps a bounded internal buffer and appends runtime-related lines to it. fileciteturn2file0
+The peers endpoint returns known peers, their state, endpoint information, handshake state, security flags, and key fingerprints.
 
-### `POST /admin/hook`
+## Logs route
 
-This is the admin-oriented route used to demonstrate:
+```bash
+curl http://127.0.0.1:8080/p2p/logs
+```
 
-- auth protection
-- heavy route tagging
-- future extension points
+The logs endpoint returns the in-memory P2P HTTP log buffer as plain text.
 
-Right now it returns `501 not_implemented`. fileciteturn2file0
+## Custom prefix
 
----
+```cpp
+vix::p2p_http::P2PHttpOptions options;
+options.prefix = "/control";
 
-## Middleware behavior
+vix::p2p_http::registerRoutes(app, runtime, options);
+```
 
-The module supports two small middleware helpers:
+Routes become:
 
-- `auth_hook(P2PHttpOptions)` rejects unauthenticated access with HTTP 401 when no valid auth hook is present
-- `heavy_tag()` adds `x-vix-route-heavy: 1` to responses for heavy routes fileciteturn2file0
+```text
+GET  /control/ping
+GET  /control/status
+GET  /control/peers
+GET  /control/logs
+POST /control/connect
+POST /control/admin/hook
+```
 
-When `VIX_P2P_HTTP_WITH_MIDDLEWARE` is enabled, `registerRoutes()` installs route-level middleware for auth and heavy tagging. Without middleware, `auth_legacy` is used as the fallback for the admin route. fileciteturn2file0
+## Options
 
----
+```cpp
+vix::p2p_http::P2PHttpOptions options;
 
-## Examples
+options.prefix = "/p2p";
+options.enable_ping = true;
+options.enable_status = true;
+options.enable_peers = true;
+options.enable_logs = true;
+options.enable_live_logs = true;
+options.stats_every_ms = 1000;
+```
 
-The examples below follow the real route surface implemented by the module.
+## Runtime examples
 
-### 1. Ping route
+### Ping route
 
 ```bash
 vix run examples/p2p_http/01_ping_route_basic.cpp
@@ -207,7 +195,7 @@ Then:
 curl http://127.0.0.1:8080/p2p/ping
 ```
 
-### 2. Status route
+### Status route
 
 ```bash
 vix run examples/p2p_http/02_status_route_basic.cpp
@@ -219,7 +207,7 @@ Then:
 curl http://127.0.0.1:8081/p2p/status
 ```
 
-### 3. Custom prefix
+### Custom prefix
 
 ```bash
 vix run examples/p2p_http/03_custom_prefix.cpp
@@ -232,7 +220,7 @@ curl http://127.0.0.1:8082/control/ping
 curl http://127.0.0.1:8082/control/status
 ```
 
-### 4. Connect route
+### Connect route
 
 Terminal 1:
 
@@ -254,90 +242,19 @@ curl -X POST http://127.0.0.1:8083/p2p/connect \
   -d '{"host":"127.0.0.1","port":9201,"scheme":"tcp"}'
 ```
 
-### 5. Peers route
-
-Terminal 1:
-
-```bash
-vix run examples/p2p_http/05_peers_route_basic.cpp --run target
-```
-
-Terminal 2:
+### Peers route
 
 ```bash
 vix run examples/p2p_http/05_peers_route_basic.cpp --run api
 ```
 
-Then connect and inspect:
+Then:
 
 ```bash
-curl -X POST http://127.0.0.1:8084/p2p/connect \
-  -H "content-type: application/json" \
-  -d '{"host":"127.0.0.1","port":9211,"scheme":"tcp"}'
-
 curl http://127.0.0.1:8084/p2p/peers
 ```
 
-### 6. Logs route
-
-```bash
-vix run examples/p2p_http/06_logs_route_basic.cpp
-```
-
-Then:
-
-```bash
-curl http://127.0.0.1:8085/p2p/logs
-curl http://127.0.0.1:8085/p2p/status
-```
-
-### 7. Middleware auth hook
-
-```bash
-vix run examples/p2p_http/07_auth_hook_ctx_basic.cpp
-```
-
-Then:
-
-```bash
-curl -X POST http://127.0.0.1:8086/p2p/admin/hook
-curl -X POST http://127.0.0.1:8086/p2p/admin/hook -H "x-auth-token: secret"
-```
-
-This example is only effective when middleware support is enabled. fileciteturn2file0
-
-### 8. Legacy auth hook
-
-```bash
-vix run examples/p2p_http/08_auth_hook_legacy_basic.cpp
-```
-
-Then:
-
-```bash
-curl -X POST http://127.0.0.1:8087/p2p/admin/hook
-curl -X POST http://127.0.0.1:8087/p2p/admin/hook -H "x-auth-token: legacy-secret"
-```
-
-### 9. Heavy admin route
-
-```bash
-vix run examples/p2p_http/09_heavy_admin_hook.cpp
-```
-
-Then:
-
-```bash
-curl -i -X POST http://127.0.0.1:8088/p2p/admin/hook -H "x-auth-token: admin"
-```
-
-Look for:
-
-```text
-x-vix-route-heavy: 1
-```
-
-### 10. Full dashboard server
+### Full dashboard server
 
 ```bash
 vix run examples/p2p_http/10_full_dashboard_server.cpp
@@ -354,68 +271,125 @@ POST /p2p/connect
 POST /p2p/admin/hook
 ```
 
-Admin header:
+## Runtime arguments
+
+When using `vix run`, keep this rule:
 
 ```text
-x-auth-token: dashboard-admin
+--     = compiler or linker flags
+--run  = runtime arguments passed to the program
 ```
 
----
-
-## Important `vix run` rule
-
-For script mode examples:
-
-```text
---      = compiler or linker flags
---run   = runtime arguments passed to argv
-```
-
-So these are correct:
+Correct:
 
 ```bash
 vix run examples/p2p_http/04_connect_route_basic.cpp --run api
-vix run examples/p2p_http/05_peers_route_basic.cpp --run target
 ```
 
-And this style is wrong for runtime args:
+Wrong:
 
 ```bash
-vix run file.cpp -- api
+vix run examples/p2p_http/04_connect_route_basic.cpp -- api
 ```
 
-Because `api` would be treated as a compiler or linker argument, not as a program argument.
+## Architecture
 
----
+```text
+vix::App
+  -> P2P HTTP routes
+  -> P2P runtime
+  -> peers
+  -> logs
+  -> status
+  -> control actions
+```
+
+With middleware enabled:
+
+```text
+Request
+  -> auth hook
+  -> heavy route tag
+  -> P2P HTTP handler
+  -> P2P runtime
+```
 
 ## Operational notes
 
-- The log buffer is bounded internally and stored in memory. fileciteturn2file0
-- Live stats logging starts only when both `enable_logs` and `enable_live_logs` are enabled. fileciteturn2file0
-- The module installs a global P2P log sink and should be shut down cleanly with `shutdown_live_logs()`. fileciteturn2file0
-- `POST /connect` and `GET /peers` are tied to `enable_peers`. fileciteturn2file0
-- The admin route is intentionally present even though its body is currently a placeholder returning `501`. fileciteturn2file0
+- The log buffer is bounded and stored in memory.
+- Live stats logging starts only when logs and live logs are enabled.
+- `POST /connect` and `GET /peers` depend on `enable_peers`.
+- Admin routes should be protected with an auth hook.
+- Live logs should be shut down cleanly when the app stops.
 
----
+## Build
 
-## Summary
+Contributors should use the Vix CLI to build this module.
 
-`vix/p2p_http` is the small HTTP control layer for the P2P runtime.
+Vix wraps the C++ build workflow with project detection, presets, Ninja builds, clean logs, caching, and focused diagnostics. This keeps the contributor workflow consistent and helps avoid hidden C++ build issues.
 
-It is useful when you want to:
+### Build the project
 
-- inspect nodes from scripts or dashboards
-- drive peer connections through JSON
-- expose runtime stats over HTTP
-- stream or export logs
-- secure control endpoints with lightweight auth
+```bash
+git clone https://github.com/vixcpp/vix.git
+cd vix
+vix build
+```
 
-It is the operational face of the P2P engine.
+### Build all targets
 
----
+Use this before running the full test suite, install workflows, or release checks:
+
+```bash
+vix build --build-target all
+```
+
+### Clean rebuild
+
+Use this when the local CMake cache or build directory may be stale:
+
+```bash
+vix build --clean
+```
+
+### Release build
+
+```bash
+vix build --preset release
+```
+
+## Tests
+
+Build all targets first, then run tests:
+
+```bash
+vix build --build-target all
+vix tests
+```
+
+Before opening a pull request, use:
+
+```bash
+vix fmt --check
+vix build --build-target all
+vix tests
+```
+
+## Useful links
+
+- P2P HTTP documentation: https://docs.vixcpp.com/modules/p2p-http/
+- P2P HTTP API reference: https://docs.vixcpp.com/modules/p2p-http/api-reference
+- P2P documentation: https://docs.vixcpp.com/modules/p2p/
+- P2P CLI command: https://docs.vixcpp.com/cli/p2p
+- Build command: https://docs.vixcpp.com/cli/build
+- Tests command: https://docs.vixcpp.com/cli/tests
+- Documentation: https://docs.vixcpp.com/
+- Engineering notes: https://blog.vixcpp.com/
+- Registry: https://registry.vixcpp.com/
+- GitHub: https://github.com/vixcpp/vix
 
 ## License
 
-MIT License
-Copyright (c) 2025 Gaspard Kirira
+MIT License.
 
+See [`LICENSE`](../../LICENSE) for details.
