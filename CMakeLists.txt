@@ -157,6 +157,34 @@ function(vix_p2p_http_try_link_middleware onto scope)
 endfunction()
 
 # ====================================================================
+# Core preload dependencies
+# ====================================================================
+# Core must see json/template/env before it is configured.
+# Otherwise it may disable them and fail later while compiling headers
+# that still include those modules.
+
+if (NOT TARGET vix::json AND NOT TARGET vix_json)
+  if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/../json/CMakeLists.txt")
+    message(STATUS "[p2p_http] Adding json before core: ../json")
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../json" "json_build")
+  endif()
+endif()
+
+if (NOT TARGET vix::template AND NOT TARGET template)
+  if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/../template/CMakeLists.txt")
+    message(STATUS "[p2p_http] Adding template before core: ../template")
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../template" "template_build")
+  endif()
+endif()
+
+if (NOT TARGET vix::env AND NOT TARGET vix_env)
+  if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/../env/CMakeLists.txt")
+    message(STATUS "[p2p_http] Adding env before core: ../env")
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../env" "env_build")
+  endif()
+endif()
+
+# ====================================================================
 # Ensure required deps exist:
 #   - vix::core
 #   - vix::p2p
