@@ -18,7 +18,7 @@
 
 #if defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
 #include <vix/middleware/app/adapter.hpp>
-#include <vix/middleware/Context.hpp>
+#include <vix/middleware/middleware.hpp>
 #endif
 
 namespace vix::p2p_http::mw
