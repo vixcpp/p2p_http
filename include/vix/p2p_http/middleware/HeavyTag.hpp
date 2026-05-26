@@ -15,7 +15,7 @@
 #define VIX_P2P_HTTP_MW_HEAVY_TAG_HPP
 
 #if defined(VIX_P2P_HTTP_WITH_MIDDLEWARE)
-#include <vix/middleware/Context.hpp>
+#include <vix/middleware/middleware.hpp>
 #endif
 
 namespace vix::p2p_http::mw
