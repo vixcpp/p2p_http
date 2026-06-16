@@ -277,10 +277,16 @@ install(TARGETS vix_p2p_http
 # Tests
 # ====================================================================
 option(VIX_P2P_HTTP_BUILD_TESTS "Build p2p_http tests" OFF)
+
 if (VIX_P2P_HTTP_BUILD_TESTS)
   include(CTest)
   enable_testing()
-  add_subdirectory(tests)
+
+  if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
+    add_subdirectory(tests)
+  else()
+    message(STATUS "[p2p_http] Tests requested but tests/ is missing — skipping.")
+  endif()
 endif()
 
 message(STATUS "------------------------------------------------------")
